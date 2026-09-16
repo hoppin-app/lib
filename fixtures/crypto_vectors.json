@@ -238,6 +238,26 @@
       "expected": null,
       "raw": "912345678",
       "region": null
+    },
+    {
+      "expected": "+351912345678",
+      "raw": "351912345678",
+      "region": "PT"
+    },
+    {
+      "expected": "+14155552671",
+      "raw": "14155552671",
+      "region": "US"
+    },
+    {
+      "expected": "+447700900123",
+      "raw": "447700900123",
+      "region": "GB"
+    },
+    {
+      "expected": "+351351912345",
+      "raw": "0351912345",
+      "region": "PT"
     }
   ],
   "safetyNumber": {

@@ -128,6 +128,11 @@ def phone_vectors() -> List[Dict[str, Any]]:
         ("", "PT"),
         ("+0123456789", "PT"),
         ("912345678", None),
+        # Country code typed without "+".
+        ("351912345678", "PT"),
+        ("14155552671", "US"),
+        ("447700900123", "GB"),
+        ("0351912345", "PT"),
     ]
     out = []
     for raw, region in cases:
