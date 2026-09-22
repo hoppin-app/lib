@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# run_tests.sh — the whole HopChat test suite, end to end.
+# run_tests.sh — the whole hoppin test suite, end to end.
 #
 #   1. starts bootstrap.py in dev mode on a free loopback port, with a
 #      throw-away state file and identity key
-#   2. writes /tmp/hopchat-test-server.json so the Swift integration tests can
+#   2. writes /tmp/hoppin-test-server.json so the Swift integration tests can
 #      find it (they skip cleanly when it is absent)
 #   3. runs the Python server suite
 #   4. runs `xcodebuild test` (unit + UI) on the iPhone 17 simulator
@@ -25,9 +25,9 @@ cd "$ROOT"
 
 PYTHON="${PYTHON:-$ROOT/venv/bin/python}"
 FIXED_CODE="${FIXED_CODE:-123456}"
-INFO_FILE="${HOPCHAT_TEST_SERVER:-/tmp/hopchat-test-server.json}"
+INFO_FILE="${HOPPIN_TEST_SERVER:-/tmp/hoppin-test-server.json}"
 DESTINATION="${DESTINATION:-platform=iOS Simulator,name=iPhone 17}"
-DERIVED_DATA="${DERIVED_DATA:-${TMPDIR:-/tmp}/hopchat-derived-data}"
+DERIVED_DATA="${DERIVED_DATA:-${TMPDIR:-/tmp}/hoppin-derived-data}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 WORK_DIR=""
@@ -66,7 +66,7 @@ trap cleanup EXIT INT TERM
 
 [[ -x "$PYTHON" ]] || fail "python not found at $PYTHON (create the venv, or set PYTHON=...)"
 
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hopchat-test-run.XXXXXX")"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hoppin-test-run.XXXXXX")"
 
 # ---------------------------------------------------------------------------
 # 1. Start the development bootstrap server
@@ -84,14 +84,14 @@ PY
 IDENTITY_KEY="$WORK_DIR/bootstrap_identity.key"
 
 log "starting bootstrap.py on 127.0.0.1:$PORT (dev mode, fixed code $FIXED_CODE)"
-HOPCHAT_ENV=dev \
-HOPCHAT_ALLOW_PLAINTEXT=1 \
-HOPCHAT_DEV_FIXED_CODE="$FIXED_CODE" \
-HOPCHAT_PORT="$PORT" \
-HOPCHAT_BIND=127.0.0.1 \
-HOPCHAT_STATE="$WORK_DIR/state.json" \
-HOPCHAT_REPORTS="$WORK_DIR/reports.jsonl" \
-HOPCHAT_IDENTITY_KEY="$IDENTITY_KEY" \
+HOPPIN_ENV=dev \
+HOPPIN_ALLOW_PLAINTEXT=1 \
+HOPPIN_DEV_FIXED_CODE="$FIXED_CODE" \
+HOPPIN_PORT="$PORT" \
+HOPPIN_BIND=127.0.0.1 \
+HOPPIN_STATE="$WORK_DIR/state.json" \
+HOPPIN_REPORTS="$WORK_DIR/reports.jsonl" \
+HOPPIN_IDENTITY_KEY="$IDENTITY_KEY" \
     "$PYTHON" bootstrap.py >"$WORK_DIR/server.log" 2>&1 &
 SERVER_PID=$!
 STARTED_SERVER=1
@@ -162,7 +162,7 @@ if [[ "${SKIP_PYTHON:-0}" == "1" ]]; then
     warn "SKIP_PYTHON=1 — skipping the server suite"
 else
     log "running the server suite"
-    HOPCHAT_ENV=dev "$PYTHON" -m unittest discover -s server -v
+    HOPPIN_ENV=dev "$PYTHON" -m unittest discover -s server -v
 fi
 
 # ---------------------------------------------------------------------------
@@ -174,10 +174,10 @@ if [[ "${SKIP_XCODE:-0}" == "1" ]]; then
 else
     log "running xcodebuild test on '$DESTINATION'"
     # TEST_RUNNER_-prefixed variables reach the test process (prefix stripped).
-    # HOPCHAT_REQUIRE_SERVER turns a missing server into a failure, not a skip.
-    export TEST_RUNNER_HOPCHAT_TEST_SERVER="$INFO_FILE"
-    export TEST_RUNNER_HOPCHAT_REQUIRE_SERVER=1
-    XCODE_LOG="${XCODE_LOG:-${TMPDIR:-/tmp}/hopchat-xcodebuild.log}"
+    # HOPPIN_REQUIRE_SERVER turns a missing server into a failure, not a skip.
+    export TEST_RUNNER_HOPPIN_TEST_SERVER="$INFO_FILE"
+    export TEST_RUNNER_HOPPIN_REQUIRE_SERVER=1
+    XCODE_LOG="${XCODE_LOG:-${TMPDIR:-/tmp}/hoppin-xcodebuild.log}"
     set +e
     xcodebuild test \
         -project HopChat-1.xcodeproj \

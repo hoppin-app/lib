@@ -65,13 +65,13 @@ SAFETY_ITERATIONS = 5200
 
 def safety_number_half(phone: str, signing_key_b64: str) -> str:
     """
-    h = Canonical(["hopchat-safety-v1", phone, signingKeyBase64])
+    h = Canonical(["hoppin-safety-v1", phone, signingKeyBase64])
     repeat 5200 times: h = SHA512(h || rawSigningKeyBytes)
     take the first 30 bytes, split into 6 chunks of 5 bytes,
     each chunk = big-endian uint40 mod 100000, zero-padded to 5 digits.
     """
     key_raw = base64.b64decode(signing_key_b64)
-    h = bs.canonical(["hopchat-safety-v1", phone, signing_key_b64])
+    h = bs.canonical(["hoppin-safety-v1", phone, signing_key_b64])
     for _ in range(SAFETY_ITERATIONS):
         h = hashlib.sha512(h + key_raw).digest()
     out = h[:30]
@@ -96,7 +96,7 @@ def canonical_vectors() -> List[Dict[str, Any]]:
         [],
         [""],
         ["", "", ""],
-        ["hopchat-wire-v2", "1", "0"],
+        ["hoppin-wire-v2", "1", "0"],
         ["é", "€", "𝄞"],
         ["emoji 👍🏽", "family 👨‍👩‍👧‍👦"],
         ["+351912345678", "0", "1790000000"],
@@ -146,7 +146,7 @@ def phone_vectors() -> List[Dict[str, Any]]:
 
 def main() -> None:
     # --- server identity ---------------------------------------------------- #
-    server_seed = seed("hopchat-vectors-server")
+    server_seed = seed("hoppin-vectors-server")
     server_key = Ed25519PrivateKey.from_private_bytes(server_seed)
     server_pub = bs.public_key_b64(server_key)
 
@@ -154,8 +154,8 @@ def main() -> None:
     parties = {}
     for name, phone, serial in (("alice", ALICE_PHONE, ALICE_SERIAL),
                                 ("bob", BOB_PHONE, BOB_SERIAL)):
-        sign_seed = seed("hopchat-vectors-%s-signing" % name)
-        agree_seed = seed("hopchat-vectors-%s-agreement" % name)
+        sign_seed = seed("hoppin-vectors-%s-signing" % name)
+        agree_seed = seed("hoppin-vectors-%s-agreement" % name)
         signing = Ed25519PrivateKey.from_private_bytes(sign_seed)
         agreement = X25519PrivateKey.from_private_bytes(agree_seed)
         parties[name] = {
@@ -220,7 +220,7 @@ def main() -> None:
     }
     payload = json.dumps(payload_obj, separators=(",", ":"),
                          ensure_ascii=False).encode("utf-8")
-    ephemeral = X25519PrivateKey.from_private_bytes(seed("hopchat-vectors-ephemeral"))
+    ephemeral = X25519PrivateKey.from_private_bytes(seed("hoppin-vectors-ephemeral"))
 
     env, aes_key = seal_envelope(
         payload=payload,
@@ -280,7 +280,7 @@ def main() -> None:
             "derivedKeyHex": aes_key.hex(),
             "plaintextJSON": payload.decode("utf-8"),
             "plaintextHex": payload.hex(),
-            "hkdfSalt": "HopChat-E2E-v2",
+            "hkdfSalt": "hoppin-E2E-v2",
             "note": "Open with bob.agreementPrivateBase64 per DESIGN_CONTRACT §4.",
         },
         "safetyNumber": {
@@ -290,7 +290,7 @@ def main() -> None:
             "expected": safety_number(ALICE_PHONE, alice["signingKeyBase64"],
                                       BOB_PHONE, bob["signingKeyBase64"]),
             "algorithm": (
-                "h = Canonical([\"hopchat-safety-v1\", phone, signingKeyBase64]); "
+                "h = Canonical([\"hoppin-safety-v1\", phone, signingKeyBase64]); "
                 "repeat 5200: h = SHA512(h || rawSigningKeyBytes); "
                 "first 30 bytes -> 6 chunks of 5 bytes -> big-endian uint40 mod "
                 "100000 zero-padded to 5 digits -> 30 digits per side; "
