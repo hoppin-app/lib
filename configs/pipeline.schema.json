@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoppin-app/pipelines/configs/pipeline.schema.json",
+  "title": "hoppin pipeline.yml",
+  "description": "Per-repository pipeline configuration. Unknown keys are rejected so a typo never silently disables a check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version"],
+  "$defs": {
+    "enable": { "type": "boolean" },
+    "toggle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "enable": { "$ref": "#/$defs/enable" } }
+    },
+    "stringList": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "stringMap": {
+      "type": "object",
+      "propertyNames": { "pattern": "^(?!GITHUB_|RUNNER_)[A-Za-z_][A-Za-z0-9_]*$" },
+      "additionalProperties": { "type": "string" }
+    },
+    "workingDirectory": { "type": "string", "minLength": 1, "pattern": "^[^/~][^\\s]*$" },
+    "severity": { "enum": ["low", "medium", "high"] },
+    "advisorySeverity": { "enum": ["low", "moderate", "high", "critical"] },
+    "semver": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+){0,2}$" }
+  },
+  "properties": {
+    "version": { "const": 1 },
+
+    "feature_branches": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "full": { "$ref": "#/$defs/enable" } }
+    },
+
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": { "$ref": "#/$defs/enable" },
+        "working_directory": { "$ref": "#/$defs/workingDirectory" },
+        "versions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^3\\.[0-9]+$" }
+        },
+        "requirements": { "$ref": "#/$defs/stringList" },
+        "env": { "$ref": "#/$defs/stringMap" },
+        "lint": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "config": { "enum": ["lib", "repo"] },
+            "extend_ignore": { "$ref": "#/$defs/stringList" },
+            "ruff_version": { "$ref": "#/$defs/semver" }
+          }
+        },
+        "format": { "$ref": "#/$defs/toggle" },
+        "typecheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "command": { "type": "string", "minLength": 1 },
+            "mypy_version": { "$ref": "#/$defs/semver" }
+          }
+        },
+        "test": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "runner": { "enum": ["unittest", "pytest"] },
+            "tests_dir": { "type": "string", "minLength": 1 },
+            "coverage_min": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "security": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "bandit": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enable": { "$ref": "#/$defs/enable" },
+                "severity": { "$ref": "#/$defs/severity" },
+                "exclude": { "$ref": "#/$defs/stringList" },
+                "bandit_version": { "$ref": "#/$defs/semver" }
+              }
+            },
+            "audit": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enable": { "$ref": "#/$defs/enable" },
+                "pip_audit_version": { "$ref": "#/$defs/semver" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": { "$ref": "#/$defs/enable" },
+        "working_directory": { "$ref": "#/$defs/workingDirectory" },
+        "node_version": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+){0,2}$" },
+        "env": { "$ref": "#/$defs/stringMap" },
+        "lint": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "script": { "type": "string", "minLength": 1 }
+          }
+        },
+        "typecheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "command": { "type": "string", "minLength": 1 }
+          }
+        },
+        "test": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "script": { "type": "string", "minLength": 1 }
+          }
+        },
+        "build": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "script": { "type": "string", "minLength": 1 }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "level": { "$ref": "#/$defs/advisorySeverity" },
+            "omit_dev": { "type": "boolean" }
+          }
+        }
+      }
+    },
+
+    "ios": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": { "$ref": "#/$defs/enable" },
+        "working_directory": { "$ref": "#/$defs/workingDirectory" },
+        "runner": { "type": "string", "minLength": 1 },
+        "xcode_version": { "type": "string" },
+        "project": { "type": "string" },
+        "scheme": { "type": "string" },
+        "destination": { "type": "string", "minLength": 1 },
+        "lint": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "strict": { "type": "boolean" },
+            "config": { "enum": ["lib", "repo"] },
+            "disable_rules": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z_0-9]+$" }
+            }
+          }
+        },
+        "format": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" }
+          }
+        },
+        "test": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "extra_args": { "type": "string" },
+            "coverage_min": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        }
+      }
+    },
+
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": { "$ref": "#/$defs/enable" },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "gitleaks_version": { "$ref": "#/$defs/semver" }
+          }
+        },
+        "vulnerabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "osv_scanner_version": { "$ref": "#/$defs/semver" }
+          }
+        },
+        "dependency_review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "fail_on_severity": { "$ref": "#/$defs/advisorySeverity" }
+          }
+        },
+        "sast": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "semgrep_version": { "$ref": "#/$defs/semver" },
+            "rulesets": { "$ref": "#/$defs/stringList" },
+            "fail_on_findings": { "type": "boolean" }
+          }
+        },
+        "codeql": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable": { "$ref": "#/$defs/enable" },
+            "languages": { "$ref": "#/$defs/stringList" },
+            "runner": { "type": "string", "minLength": 1 },
+            "build_mode": { "enum": ["none", "autobuild", "manual"] },
+            "build_command": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# Copy to .github/pipeline.yml. Only what differs from lib/configs/defaults.yml.
+version: 1
+
+node:
+  enable: true
+  node_version: "22"
+  test:
+    enable: false # turn on once the project has a test script

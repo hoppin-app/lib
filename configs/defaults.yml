@@ -1,0 +1,112 @@
+# Organisation-wide pipeline defaults.
+#
+# A repository's `.github/pipeline.yml` is deep-merged over this file, so a
+# repo only states what differs. Every top-level section is off by default
+# except `security`: a repo opts in to the stacks it actually has.
+#
+# Reference: docs/PIPELINE.md. Schema: configs/pipeline.schema.json.
+
+version: 1
+
+# Pushes to ft/* branches run only lint, format and the secret scan.
+# Set full: true in a repo to run everything there too.
+feature_branches:
+  full: false
+
+python:
+  enable: false
+  working_directory: .
+  versions: ["3.12"]          # the test job runs once per version
+  requirements: [requirements.txt]
+  env: {}                     # extra environment for lint/test/security steps
+  lint:                       # ruff check
+    enable: true
+    config: lib               # lib = configs/ruff.toml, repo = the repo's own
+    extend_ignore: []
+    ruff_version: "0.17.6"
+  format:                     # ruff format --check
+    enable: true
+  typecheck:                  # mypy
+    enable: false
+    command: mypy .
+    mypy_version: "2.4.1"
+  test:
+    enable: true
+    runner: unittest          # unittest | pytest
+    tests_dir: tests
+    coverage_min: 0           # percent; the job fails below it
+  security:
+    enable: true
+    bandit:
+      enable: true
+      severity: medium        # low | medium | high
+      exclude: [tests, venv, .venv]
+      bandit_version: "1.9.4"
+    audit:                    # pip-audit over the requirements files
+      enable: true
+      pip_audit_version: "2.10.1"
+
+node:
+  enable: false
+  working_directory: .
+  node_version: "22"
+  env: {}
+  lint:
+    enable: true
+    script: lint              # npm run <script>
+  typecheck:
+    enable: true
+    command: npx tsc --noEmit
+  test:
+    enable: false             # many repos have no unit tests yet
+    script: test
+  build:
+    enable: true
+    script: build
+  audit:
+    enable: true
+    level: high               # low | moderate | high | critical
+    omit_dev: true
+
+ios:
+  enable: false
+  working_directory: .
+  runner: macos-latest
+  xcode_version: ""           # empty = the runner's default Xcode
+  project: ""                 # e.g. App.xcodeproj
+  scheme: ""
+  destination: platform=iOS Simulator,name=iPhone 17
+  lint:                       # SwiftLint
+    enable: true
+    strict: false
+    config: lib               # lib = org baseline, repo = the repo's .swiftlint.yml
+    disable_rules: []         # SwiftLint rule ids to switch off (existing debt)
+  format:                     # swift-format check
+    enable: false
+  test:
+    enable: true
+    extra_args: ""            # appended to xcodebuild, e.g. -only-testing:...
+    coverage_min: 0           # minimum line coverage in percent; 0 = no check
+
+security:
+  enable: true
+  secrets:                    # gitleaks over the full git history
+    enable: true
+    gitleaks_version: "8.30.1"
+  vulnerabilities:            # osv-scanner over every lockfile it recognises
+    enable: true
+    osv_scanner_version: "2.7.1"
+  dependency_review:          # pull requests only; free on public repos, needs
+    enable: true              # GitHub Advanced Security (paid) on private ones
+    fail_on_severity: high    # low | moderate | high | critical
+  sast:                       # Semgrep OSS: static analysis and code smells
+    enable: true
+    semgrep_version: "1.187.0"
+    rulesets: [p/default]     # registry rule packs, e.g. p/python, p/typescript
+    fail_on_findings: true
+  codeql:                     # free for public repos; off until languages are set
+    enable: false
+    languages: []             # python | javascript-typescript | swift | ...
+    runner: ubuntu-latest     # use a macOS runner for swift
+    build_mode: none          # none | autobuild | manual (swift cannot use none)
+    build_command: ""         # required when build_mode is manual

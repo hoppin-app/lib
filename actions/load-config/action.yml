@@ -1,0 +1,55 @@
+name: Load pipeline config
+description: >
+  Merges the repository's pipeline.yml over the organisation defaults,
+  validates it, and exposes each section as a JSON output.
+
+inputs:
+  config_path:
+    description: Path of the repository's pipeline config, relative to the workspace.
+    default: .github/pipeline.yml
+
+outputs:
+  config:
+    description: The whole merged configuration (JSON).
+    value: ${{ steps.load.outputs.config }}
+  python:
+    value: ${{ steps.load.outputs.python }}
+  node:
+    value: ${{ steps.load.outputs.node }}
+  ios:
+    value: ${{ steps.load.outputs.ios }}
+  security:
+    value: ${{ steps.load.outputs.security }}
+  python_enabled:
+    value: ${{ steps.load.outputs.python_enabled }}
+  node_enabled:
+    value: ${{ steps.load.outputs.node_enabled }}
+  ios_enabled:
+    value: ${{ steps.load.outputs.ios_enabled }}
+  security_enabled:
+    value: ${{ steps.load.outputs.security_enabled }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install loader dependencies
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/../..
+      run: |
+        python3 -m venv "$RUNNER_TEMP/pipeline-venv"
+        "$RUNNER_TEMP/pipeline-venv/bin/pip" install --quiet --disable-pip-version-check \
+          -r "$ACTION_ROOT/tools/requirements.txt"
+
+    - name: Validate and merge configuration
+      id: load
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/../..
+        CONFIG_PATH: ${{ inputs.config_path }}
+      run: |
+        "$RUNNER_TEMP/pipeline-venv/bin/python" "$ACTION_ROOT/tools/load_config.py" \
+          --config "$GITHUB_WORKSPACE/$CONFIG_PATH" \
+          --ref "$GITHUB_REF" \
+          --github-output "$GITHUB_OUTPUT" \
+          --github-summary "$GITHUB_STEP_SUMMARY"

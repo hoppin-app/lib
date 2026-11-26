@@ -1,0 +1,213 @@
+name: python
+
+# Reusable workflow: lint, format, type check, test (with coverage) and
+# security scan for a Python project. Normally called by pipeline.yml, which
+# passes the merged `python` section of the repository's pipeline.yml.
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: The merged `python` configuration section (JSON).
+        type: string
+        required: true
+      lib_repository:
+        type: string
+        default: hoppin-app/lib
+      lib_ref:
+        description: Ref of the lib repository to use for configs and actions.
+        type: string
+        default: v1
+    secrets:
+      lib_token:
+        description: Token able to read the lib repository, if it is private.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    if: ${{ fromJson(inputs.config).lint.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/python-setup
+        with:
+          python_version: ${{ fromJson(inputs.config).versions[0] }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+      - uses: ./lib/actions/python-lint
+        with:
+          mode: check
+          ruff_version: ${{ fromJson(inputs.config).lint.ruff_version }}
+          config: ${{ fromJson(inputs.config).lint.config }}
+          extend_ignore: ${{ join(fromJson(inputs.config).lint.extend_ignore, ',') }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+
+  format:
+    name: format
+    if: ${{ fromJson(inputs.config).format.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/python-setup
+        with:
+          python_version: ${{ fromJson(inputs.config).versions[0] }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+      - uses: ./lib/actions/python-lint
+        with:
+          mode: format
+          ruff_version: ${{ fromJson(inputs.config).lint.ruff_version }}
+          config: ${{ fromJson(inputs.config).lint.config }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+
+  typecheck:
+    name: typecheck
+    if: ${{ fromJson(inputs.config).typecheck.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/export-env
+        with:
+          env_json: ${{ toJson(fromJson(inputs.config).env) }}
+      - uses: ./lib/actions/python-setup
+        with:
+          python_version: ${{ fromJson(inputs.config).versions[0] }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+          requirements: ${{ join(fromJson(inputs.config).requirements, ',') }}
+          extra_packages: mypy==${{ fromJson(inputs.config).typecheck.mypy_version }}
+      - name: Run type checker
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          COMMAND: ${{ fromJson(inputs.config).typecheck.command }}
+        run: bash -c "$COMMAND"
+
+  test:
+    name: test (py${{ matrix.python }})
+    if: ${{ fromJson(inputs.config).test.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ${{ fromJson(inputs.config).versions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/export-env
+        with:
+          env_json: ${{ toJson(fromJson(inputs.config).env) }}
+      - uses: ./lib/actions/python-setup
+        with:
+          python_version: ${{ matrix.python }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+          requirements: ${{ join(fromJson(inputs.config).requirements, ',') }}
+          extra_packages: coverage==7.17.5 ${{ fromJson(inputs.config).test.runner == 'pytest' && 'pytest==9.2.0' || '' }}
+      - name: Run tests with coverage
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          RUNNER: ${{ fromJson(inputs.config).test.runner }}
+          TESTS_DIR: ${{ fromJson(inputs.config).test.tests_dir }}
+          # Tests find the shared fixtures here, as in a parent checkout.
+          HOPPIN_LIB_DIR: ${{ github.workspace }}/lib
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER" == "pytest" ]]; then
+            coverage run --branch -m pytest "$TESTS_DIR"
+          else
+            coverage run --branch -m unittest discover -s "$TESTS_DIR" -v
+          fi
+      - name: Coverage report and threshold
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          COVERAGE_MIN: ${{ fromJson(inputs.config).test.coverage_min }}
+        run: |
+          coverage xml
+          {
+            echo "### Coverage (py${{ matrix.python }})"
+            coverage report --format=markdown --omit='lib/*,tests/*'
+          } >> "$GITHUB_STEP_SUMMARY"
+          coverage report --omit='lib/*,tests/*' --fail-under="$COVERAGE_MIN"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: coverage-py${{ matrix.python }}
+          path: ${{ fromJson(inputs.config).working_directory }}/coverage.xml
+          if-no-files-found: ignore
+
+  security:
+    name: security
+    if: ${{ fromJson(inputs.config).security.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/python-setup
+        with:
+          python_version: ${{ fromJson(inputs.config).versions[0] }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+          extra_packages: >-
+            bandit==${{ fromJson(inputs.config).security.bandit.bandit_version }}
+            pip-audit==${{ fromJson(inputs.config).security.audit.pip_audit_version }}
+      - name: Static security analysis (bandit)
+        if: ${{ fromJson(inputs.config).security.bandit.enable }}
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          SEVERITY: ${{ fromJson(inputs.config).security.bandit.severity }}
+          EXCLUDE: ${{ join(fromJson(inputs.config).security.bandit.exclude, ',') }}
+        run: |
+          set -euo pipefail
+          excludes="./lib"
+          IFS=',' read -ra dirs <<< "$EXCLUDE"
+          for d in "${dirs[@]}"; do
+            [[ -n "$d" ]] && excludes+=",./${d#./}"
+          done
+          bandit -r . --severity-level "$SEVERITY" --exclude "$excludes"
+      - name: Dependency audit (pip-audit)
+        if: ${{ fromJson(inputs.config).security.audit.enable && join(fromJson(inputs.config).requirements, '') != '' }}
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          REQUIREMENTS: ${{ join(fromJson(inputs.config).requirements, ',') }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra files <<< "$REQUIREMENTS"
+          for f in "${files[@]}"; do
+            pip-audit --requirement "$f"
+          done

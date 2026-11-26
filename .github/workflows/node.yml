@@ -1,0 +1,154 @@
+name: node
+
+# Reusable workflow: lint, type check, test, build and dependency audit for a
+# Node/TypeScript project. Normally called by pipeline.yml.
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: The merged `node` configuration section (JSON).
+        type: string
+        required: true
+      lib_repository:
+        type: string
+        default: hoppin-app/lib
+      lib_ref:
+        type: string
+        default: v1
+    secrets:
+      lib_token:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    if: ${{ fromJson(inputs.config).lint.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/export-env
+        with:
+          env_json: ${{ toJson(fromJson(inputs.config).env) }}
+      - uses: ./lib/actions/node-setup
+        with:
+          node_version: ${{ fromJson(inputs.config).node_version }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+      - name: Lint
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          SCRIPT: ${{ fromJson(inputs.config).lint.script }}
+        run: npm run "$SCRIPT"
+
+  typecheck:
+    name: typecheck
+    if: ${{ fromJson(inputs.config).typecheck.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/export-env
+        with:
+          env_json: ${{ toJson(fromJson(inputs.config).env) }}
+      - uses: ./lib/actions/node-setup
+        with:
+          node_version: ${{ fromJson(inputs.config).node_version }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+      - name: Type check
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          COMMAND: ${{ fromJson(inputs.config).typecheck.command }}
+        run: bash -c "$COMMAND"
+
+  test:
+    name: test
+    if: ${{ fromJson(inputs.config).test.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/export-env
+        with:
+          env_json: ${{ toJson(fromJson(inputs.config).env) }}
+      - uses: ./lib/actions/node-setup
+        with:
+          node_version: ${{ fromJson(inputs.config).node_version }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+      - name: Test
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          SCRIPT: ${{ fromJson(inputs.config).test.script }}
+        run: npm run "$SCRIPT"
+
+  build:
+    name: build
+    if: ${{ fromJson(inputs.config).build.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - uses: ./lib/actions/export-env
+        with:
+          env_json: ${{ toJson(fromJson(inputs.config).env) }}
+      - uses: ./lib/actions/node-setup
+        with:
+          node_version: ${{ fromJson(inputs.config).node_version }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+      - name: Build
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          SCRIPT: ${{ fromJson(inputs.config).build.script }}
+        run: npm run "$SCRIPT"
+
+  audit:
+    name: audit
+    if: ${{ fromJson(inputs.config).audit.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ fromJson(inputs.config).node_version }}
+      - name: npm audit
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          LEVEL: ${{ fromJson(inputs.config).audit.level }}
+          OMIT_DEV: ${{ fromJson(inputs.config).audit.omit_dev }}
+        run: |
+          set -euo pipefail
+          args=(--package-lock-only --audit-level="$LEVEL")
+          [[ "$OMIT_DEV" == "true" ]] && args+=(--omit=dev)
+          npm audit "${args[@]}"

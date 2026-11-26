@@ -1,0 +1,20 @@
+name: Export env
+description: Exports a JSON object of key/value pairs to later steps of the job, safely.
+
+inputs:
+  env_json:
+    description: JSON object of environment variables.
+    default: "{}"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        ENV_JSON: ${{ inputs.env_json }}
+      run: |
+        set -euo pipefail
+        # Multi-line-safe GITHUB_ENV syntax, so a value can never smuggle in
+        # a second variable. Key names are restricted by the config schema.
+        jq -r 'to_entries[] | "\(.key)<<__PIPELINE_EOF__\n\(.value)\n__PIPELINE_EOF__"' \
+          <<< "$ENV_JSON" >> "$GITHUB_ENV"

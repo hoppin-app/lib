@@ -1,0 +1,41 @@
+name: Python setup
+description: Installs Python and the repository's requirements files, with pip caching.
+
+inputs:
+  python_version:
+    required: true
+  working_directory:
+    default: .
+  requirements:
+    description: Comma-separated requirements files, relative to working_directory.
+    default: ""
+  extra_packages:
+    description: Space-separated extra pip packages (pin them), e.g. "coverage==7.17.5".
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+      with:
+        python-version: ${{ inputs.python_version }}
+        cache: ${{ inputs.requirements != '' && 'pip' || '' }}
+        cache-dependency-path: ${{ inputs.requirements != '' && format('{0}/**/requirements*.txt', inputs.working_directory) || '' }}
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        REQUIREMENTS: ${{ inputs.requirements }}
+        EXTRA_PACKAGES: ${{ inputs.extra_packages }}
+      run: |
+        set -euo pipefail
+        python -m pip install --quiet --disable-pip-version-check --upgrade pip
+        IFS=',' read -ra files <<< "$REQUIREMENTS"
+        for f in "${files[@]}"; do
+          [[ -n "$f" ]] && python -m pip install --quiet --disable-pip-version-check -r "$f"
+        done
+        if [[ -n "$EXTRA_PACKAGES" ]]; then
+          # shellcheck disable=SC2086
+          python -m pip install --quiet --disable-pip-version-check $EXTRA_PACKAGES
+        fi

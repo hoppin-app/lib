@@ -1,0 +1,126 @@
+name: security
+
+# Reusable workflow: secret scanning (gitleaks), dependency vulnerabilities
+# (osv-scanner), static analysis (Semgrep OSS), plus optional dependency
+# review and CodeQL. All tools are free and open source. Language-agnostic, so
+# it does not need the lib checkout. Normally called by pipeline.yml.
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: The merged `security` configuration section (JSON).
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: secrets
+    if: ${{ fromJson(inputs.config).secrets.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks
+        env:
+          VERSION: ${{ fromJson(inputs.config).secrets.gitleaks_version }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}"
+          archive="gitleaks_${VERSION}_linux_x64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -O "$base/$archive" -O "$base/gitleaks_${VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "gitleaks_${VERSION}_checksums.txt"
+          tar -xzf "$archive" gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose
+
+  vulnerabilities:
+    name: vulnerabilities
+    if: ${{ fromJson(inputs.config).vulnerabilities.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: osv-scanner
+        env:
+          VERSION: ${{ fromJson(inputs.config).vulnerabilities.osv_scanner_version }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/osv-scanner/releases/download/v${VERSION}"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -O "$base/osv-scanner_linux_amd64" -O "$base/osv-scanner_SHA256SUMS"
+          sha256sum --check --ignore-missing osv-scanner_SHA256SUMS
+          chmod +x osv-scanner_linux_amd64
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/osv-scanner_linux_amd64" scan source --recursive .
+
+  sast:
+    name: sast
+    if: ${{ fromJson(inputs.config).sast.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
+      - name: Semgrep
+        env:
+          VERSION: ${{ fromJson(inputs.config).sast.semgrep_version }}
+          RULESETS: ${{ join(fromJson(inputs.config).sast.rulesets, ',') }}
+          FAIL: ${{ fromJson(inputs.config).sast.fail_on_findings }}
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --disable-pip-version-check "semgrep==$VERSION"
+          args=()
+          IFS=',' read -ra sets <<< "$RULESETS"
+          for s in "${sets[@]}"; do args+=(--config "$s"); done
+          [[ "$FAIL" == "true" ]] && args+=(--error)
+          semgrep scan "${args[@]}" .
+
+  dependency-review:
+    name: dependency-review
+    if: ${{ github.event_name == 'pull_request' && fromJson(inputs.config).dependency_review.enable }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: ${{ fromJson(inputs.config).dependency_review.fail_on_severity }}
+
+  codeql:
+    name: codeql
+    if: ${{ fromJson(inputs.config).codeql.enable }}
+    runs-on: ${{ fromJson(inputs.config).codeql.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@915412ff23e8b7659517e607487dbeae018f2934 # v4
+        with:
+          languages: ${{ join(fromJson(inputs.config).codeql.languages, ',') }}
+          build-mode: ${{ fromJson(inputs.config).codeql.build_mode }}
+      - name: Build
+        if: ${{ fromJson(inputs.config).codeql.build_mode == 'manual' }}
+        env:
+          BUILD_COMMAND: ${{ fromJson(inputs.config).codeql.build_command }}
+        run: bash -euo pipefail -c "$BUILD_COMMAND"
+      - uses: github/codeql-action/analyze@915412ff23e8b7659517e607487dbeae018f2934 # v4

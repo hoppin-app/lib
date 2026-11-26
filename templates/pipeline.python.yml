@@ -1,0 +1,13 @@
+# Copy to .github/pipeline.yml. Only what differs from lib/configs/defaults.yml.
+version: 1
+
+python:
+  enable: true
+  versions: ["3.12", "3.13"]
+  requirements: [requirements.txt]
+  env:
+    HOPPIN_ENV: dev
+  test:
+    runner: unittest
+    tests_dir: tests
+    coverage_min: 70
