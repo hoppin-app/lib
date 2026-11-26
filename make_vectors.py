@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate docs/fixtures/crypto_vectors.json.
+Generate fixtures/crypto_vectors.json.
 
 The fixtures are fully deterministic: every key is derived from a fixed ASCII
 label via SHA-256, and every timestamp/id/nonce is a literal. Re-running this
@@ -10,7 +10,7 @@ The Swift test target consumes the same file, so both languages are pinned to
 one set of expected bytes for: canonical encoding, certificates, wire
 signatures, envelope sealing, safety numbers and phone normalization.
 
-    ./venv/bin/python server/make_vectors.py
+    ../server/venv/bin/python make_vectors.py   # from lib/, in the parent checkout
 """
 
 from __future__ import annotations
@@ -25,14 +25,20 @@ from typing import Any, Dict, List
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
+_LIB = os.path.dirname(os.path.abspath(__file__))
+# The server repo: $HOPPIN_SERVER_DIR, or ../server in the hoppin parent checkout.
+_SERVER = (os.environ.get("HOPPIN_SERVER_DIR")
+           or os.path.join(os.path.dirname(_LIB), "server"))
+if not os.path.exists(os.path.join(_SERVER, "bootstrap.py")):
+    sys.exit("server repo not found at %s (set HOPPIN_SERVER_DIR)" % _SERVER)
+for _path in (_SERVER, os.path.join(_SERVER, "tools")):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 import bootstrap as bs  # noqa: E402
-from server.client import raw_private, raw_public, seal_envelope  # noqa: E402
+from client import raw_private, raw_public, seal_envelope  # noqa: E402
 
-OUT_PATH = os.path.join(_ROOT, "docs", "fixtures", "crypto_vectors.json")
+OUT_PATH = os.path.join(_LIB, "fixtures", "crypto_vectors.json")
 
 # --- fixed inputs ---------------------------------------------------------- #
 

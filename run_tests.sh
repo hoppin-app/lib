@@ -11,19 +11,24 @@
 #   5. stops the server and removes every temporary file, including on failure
 #
 # Usage:
-#   scripts/run_tests.sh                       # everything
-#   SKIP_PYTHON=1 scripts/run_tests.sh         # only the app tests
-#   SKIP_XCODE=1  scripts/run_tests.sh         # only the server tests
-#   scripts/run_tests.sh -only-testing:HopChat-1Tests/IdentityTests
+#   lib/run_tests.sh                       # everything (from the parent checkout)
+#   SKIP_PYTHON=1 lib/run_tests.sh         # only the app tests
+#   SKIP_XCODE=1  lib/run_tests.sh         # only the server tests
+#   lib/run_tests.sh -only-testing:HopChat-1Tests/IdentityTests
+#
+# The server and app repos are found next to lib/ (the hoppin parent
+# checkout), or at HOPPIN_SERVER_DIR / HOPPIN_IOS_DIR (CI).
 #
 # Environment overrides: PYTHON, DESTINATION, DERIVED_DATA, FIXED_CODE.
 #
 set -Eeuo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVER_DIR="$(cd "${HOPPIN_SERVER_DIR:-$LIB/../server}" && pwd)"
+IOS_DIR="$(cd "${HOPPIN_IOS_DIR:-$LIB/../ios}" && pwd)"
+cd "$SERVER_DIR"
 
-PYTHON="${PYTHON:-$ROOT/venv/bin/python}"
+PYTHON="${PYTHON:-$SERVER_DIR/venv/bin/python}"
 FIXED_CODE="${FIXED_CODE:-123456}"
 INFO_FILE="${HOPPIN_TEST_SERVER:-/tmp/hoppin-test-server.json}"
 DESTINATION="${DESTINATION:-platform=iOS Simulator,name=iPhone 17}"
@@ -162,7 +167,7 @@ if [[ "${SKIP_PYTHON:-0}" == "1" ]]; then
     warn "SKIP_PYTHON=1 — skipping the server suite"
 else
     log "running the server suite"
-    HOPPIN_ENV=dev "$PYTHON" -m unittest discover -s server -v
+    HOPPIN_ENV=dev HOPPIN_LIB_DIR="$LIB" "$PYTHON" -m unittest discover -s tests -v
 fi
 
 # ---------------------------------------------------------------------------
@@ -177,10 +182,11 @@ else
     # HOPPIN_REQUIRE_SERVER turns a missing server into a failure, not a skip.
     export TEST_RUNNER_HOPPIN_TEST_SERVER="$INFO_FILE"
     export TEST_RUNNER_HOPPIN_REQUIRE_SERVER=1
+    export TEST_RUNNER_HOPPIN_FIXTURES="$LIB/fixtures/crypto_vectors.json"
     XCODE_LOG="${XCODE_LOG:-${TMPDIR:-/tmp}/hoppin-xcodebuild.log}"
     set +e
     xcodebuild test \
-        -project HopChat-1.xcodeproj \
+        -project "$IOS_DIR/HopChat-1.xcodeproj" \
         -scheme HopChat-1 \
         -destination "$DESTINATION" \
         -derivedDataPath "$DERIVED_DATA" \
