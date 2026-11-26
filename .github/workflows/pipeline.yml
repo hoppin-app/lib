@@ -62,7 +62,9 @@ jobs:
   python:
     needs: config
     if: ${{ needs.config.outputs.python_enabled == 'true' }}
-    uses: ./.github/workflows/python.yml
+    # "./" would resolve in the calling repo, so nested calls name lib explicitly.
+    # Keep the @ref equal to the ref of this workflow.
+    uses: hoppin-app/lib/.github/workflows/python.yml@v1
     with:
       config: ${{ needs.config.outputs.python }}
       lib_repository: ${{ inputs.lib_repository }}
@@ -73,7 +75,7 @@ jobs:
   node:
     needs: config
     if: ${{ needs.config.outputs.node_enabled == 'true' }}
-    uses: ./.github/workflows/node.yml
+    uses: hoppin-app/lib/.github/workflows/node.yml@v1
     with:
       config: ${{ needs.config.outputs.node }}
       lib_repository: ${{ inputs.lib_repository }}
@@ -84,7 +86,7 @@ jobs:
   ios:
     needs: config
     if: ${{ needs.config.outputs.ios_enabled == 'true' }}
-    uses: ./.github/workflows/ios.yml
+    uses: hoppin-app/lib/.github/workflows/ios.yml@v1
     with:
       config: ${{ needs.config.outputs.ios }}
       lib_repository: ${{ inputs.lib_repository }}
@@ -95,7 +97,7 @@ jobs:
   security:
     needs: config
     if: ${{ needs.config.outputs.security_enabled == 'true' }}
-    uses: ./.github/workflows/security.yml
+    uses: hoppin-app/lib/.github/workflows/security.yml@v1
     with:
       config: ${{ needs.config.outputs.security }}
 
