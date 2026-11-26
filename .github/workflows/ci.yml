@@ -1,0 +1,48 @@
+# lib's own CI. It validates the workflows and actions, then runs the very
+# pipeline it publishes against itself, using the commit under test.
+name: ci
+
+on:
+  push:
+    branches: [main, development]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  validate:
+    name: validate workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: actionlint
+        env:
+          VERSION: "1.7.12"
+        run: |
+          set -euo pipefail
+          base="https://github.com/rhysd/actionlint/releases/download/v${VERSION}"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -O "$base/actionlint_${VERSION}_linux_amd64.tar.gz" \
+                     -O "$base/actionlint_${VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "actionlint_${VERSION}_checksums.txt"
+          tar -xzf "actionlint_${VERSION}_linux_amd64.tar.gz" actionlint
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/actionlint" -color
+
+  pipeline:
+    name: pipeline
+    uses: ./.github/workflows/pipeline.yml
+    with:
+      lib_repository: ${{ github.repository }}
+      lib_ref: ${{ github.sha }}

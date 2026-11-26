@@ -1,0 +1,9 @@
+# Copy to .github/pipeline.yml. Only what differs from lib/configs/defaults.yml.
+version: 1
+
+ios:
+  enable: true
+  project: HopChat-1.xcodeproj
+  scheme: HopChat-1
+  destination: platform=iOS Simulator,name=iPhone 17
+  xcode_version: ""

@@ -1,0 +1,126 @@
+name: pipeline
+
+# The single entry point every hoppin repository calls. It validates the
+# repository's .github/pipeline.yml, runs only the stacks that are enabled,
+# and finishes with one `gate` job that is the only check branch protection
+# needs to require.
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        description: Path of the repository's pipeline config.
+        type: string
+        default: .github/pipeline.yml
+      lib_repository:
+        type: string
+        default: hoppin-app/lib
+      lib_ref:
+        description: Ref of lib for configs and actions. Keep equal to the ref in `uses:`.
+        type: string
+        default: v1
+    secrets:
+      lib_token:
+        description: Token able to read the lib repository, if it is private.
+        required: false
+
+# The caller must grant at least these (see templates/ci.yml).
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  config:
+    name: config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      python: ${{ steps.load.outputs.python }}
+      node: ${{ steps.load.outputs.node }}
+      ios: ${{ steps.load.outputs.ios }}
+      security: ${{ steps.load.outputs.security }}
+      python_enabled: ${{ steps.load.outputs.python_enabled }}
+      node_enabled: ${{ steps.load.outputs.node_enabled }}
+      ios_enabled: ${{ steps.load.outputs.ios_enabled }}
+      security_enabled: ${{ steps.load.outputs.security_enabled }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - id: load
+        uses: ./lib/actions/load-config
+        with:
+          config_path: ${{ inputs.config_path }}
+
+  python:
+    needs: config
+    if: ${{ needs.config.outputs.python_enabled == 'true' }}
+    uses: ./.github/workflows/python.yml
+    with:
+      config: ${{ needs.config.outputs.python }}
+      lib_repository: ${{ inputs.lib_repository }}
+      lib_ref: ${{ inputs.lib_ref }}
+    secrets:
+      lib_token: ${{ secrets.lib_token }}
+
+  node:
+    needs: config
+    if: ${{ needs.config.outputs.node_enabled == 'true' }}
+    uses: ./.github/workflows/node.yml
+    with:
+      config: ${{ needs.config.outputs.node }}
+      lib_repository: ${{ inputs.lib_repository }}
+      lib_ref: ${{ inputs.lib_ref }}
+    secrets:
+      lib_token: ${{ secrets.lib_token }}
+
+  ios:
+    needs: config
+    if: ${{ needs.config.outputs.ios_enabled == 'true' }}
+    uses: ./.github/workflows/ios.yml
+    with:
+      config: ${{ needs.config.outputs.ios }}
+      lib_repository: ${{ inputs.lib_repository }}
+      lib_ref: ${{ inputs.lib_ref }}
+    secrets:
+      lib_token: ${{ secrets.lib_token }}
+
+  security:
+    needs: config
+    if: ${{ needs.config.outputs.security_enabled == 'true' }}
+    uses: ./.github/workflows/security.yml
+    with:
+      config: ${{ needs.config.outputs.security }}
+
+  # Require this job, and only this job, in branch protection. A stack that is
+  # disabled in pipeline.yml is skipped (fine); a failed or cancelled one fails
+  # the gate, and so does a config that did not load.
+  gate:
+    name: gate
+    if: ${{ always() }}
+    needs: [config, python, node, ios, security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate results
+        env:
+          NEEDS: ${{ toJson(needs) }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | "\(.key)\t\(.value.result)"' <<< "$NEEDS" | column -t
+          bad="$(jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(", ")' <<< "$NEEDS")"
+          if [[ -n "$bad" ]]; then
+            echo "::error::Failed or cancelled: $bad"
+            exit 1
+          fi
+          if [[ "$(jq -r '.config.result' <<< "$NEEDS")" != "success" ]]; then
+            echo "::error::The pipeline configuration did not load"
+            exit 1
+          fi

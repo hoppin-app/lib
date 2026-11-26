@@ -1,0 +1,22 @@
+name: Node setup
+description: Installs Node and the project's dependencies with `npm ci`, with caching.
+
+inputs:
+  node_version:
+    required: true
+  working_directory:
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      with:
+        node-version: ${{ inputs.node_version }}
+        cache: npm
+        cache-dependency-path: ${{ inputs.working_directory }}/package-lock.json
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: npm ci --no-audit --no-fund

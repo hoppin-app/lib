@@ -1,0 +1,113 @@
+name: ios
+
+# Reusable workflow: SwiftLint and xcodebuild tests for an Xcode project.
+# Runs on a macOS runner. Normally called by pipeline.yml.
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: The merged `ios` configuration section (JSON).
+        type: string
+        required: true
+      lib_repository:
+        type: string
+        default: hoppin-app/lib
+      lib_ref:
+        type: string
+        default: v1
+    secrets:
+      lib_token:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    if: ${{ fromJson(inputs.config).lint.enable }}
+    runs-on: ${{ fromJson(inputs.config).runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - name: SwiftLint
+        uses: ./lib/actions/swift-lint
+        with:
+          mode: lint
+          config: ${{ fromJson(inputs.config).lint.config }}
+          disable_rules: ${{ join(fromJson(inputs.config).lint.disable_rules, ',') }}
+          strict: ${{ fromJson(inputs.config).lint.strict }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+      - name: swift-format
+        if: ${{ fromJson(inputs.config).format.enable }}
+        uses: ./lib/actions/swift-lint
+        with:
+          mode: format
+          config: ${{ fromJson(inputs.config).lint.config }}
+          working_directory: ${{ fromJson(inputs.config).working_directory }}
+
+  test:
+    name: test
+    if: ${{ fromJson(inputs.config).test.enable }}
+    runs-on: ${{ fromJson(inputs.config).runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # The cross-language tests read lib/fixtures from ./lib.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.lib_repository }}
+          ref: ${{ inputs.lib_ref }}
+          path: lib
+          token: ${{ secrets.lib_token || github.token }}
+          persist-credentials: false
+      - name: Select Xcode
+        if: ${{ fromJson(inputs.config).xcode_version != '' }}
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: ${{ fromJson(inputs.config).xcode_version }}
+      - name: xcodebuild test
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          PROJECT: ${{ fromJson(inputs.config).project }}
+          SCHEME: ${{ fromJson(inputs.config).scheme }}
+          DESTINATION: ${{ fromJson(inputs.config).destination }}
+          EXTRA_ARGS: ${{ fromJson(inputs.config).test.extra_args }}
+          TEST_RUNNER_HOPPIN_FIXTURES: ${{ github.workspace }}/lib/fixtures/crypto_vectors.json
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          xcodebuild test \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination "$DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/result.xcresult" \
+            -parallel-testing-enabled NO \
+            -enableCodeCoverage YES \
+            $EXTRA_ARGS
+      - name: Coverage
+        if: ${{ fromJson(inputs.config).test.coverage_min > 0 }}
+        working-directory: ${{ fromJson(inputs.config).working_directory }}
+        env:
+          MIN: ${{ fromJson(inputs.config).test.coverage_min }}
+        run: |
+          set -euo pipefail
+          xcrun xccov view --report --json "$RUNNER_TEMP/result.xcresult" > "$RUNNER_TEMP/coverage.json"
+          python3 "$GITHUB_WORKSPACE/lib/tools/xcode_coverage.py" \
+            --report "$RUNNER_TEMP/coverage.json" --min "$MIN" \
+            --github-summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: ${{ failure() }}
+        with:
+          name: xcresult
+          path: ${{ runner.temp }}/result.xcresult
+          if-no-files-found: ignore

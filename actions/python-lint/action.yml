@@ -1,0 +1,53 @@
+name: Python lint
+description: Runs ruff (lint or format check) with the organisation baseline config.
+
+inputs:
+  mode:
+    description: check (lint) or format (formatting check).
+    required: true
+  ruff_version:
+    required: true
+  config:
+    description: lib = the organisation baseline, repo = the repository's own config.
+    default: lib
+  extend_ignore:
+    description: Comma-separated extra rule codes to ignore (config=lib only).
+    default: ""
+  working_directory:
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - name: Install ruff
+      shell: bash
+      env:
+        RUFF_VERSION: ${{ inputs.ruff_version }}
+      run: python -m pip install --quiet --disable-pip-version-check "ruff==$RUFF_VERSION"
+
+    - name: Run ruff
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        MODE: ${{ inputs.mode }}
+        CONFIG: ${{ inputs.config }}
+        EXTEND_IGNORE: ${{ inputs.extend_ignore }}
+        LIB_RUFF: ${{ github.action_path }}/../../configs/ruff.toml
+      run: |
+        set -euo pipefail
+        cfg_args=()
+        if [[ "$CONFIG" == "lib" ]]; then
+          # Layer the repo's exceptions over the baseline without editing it.
+          overlay="$RUNNER_TEMP/ruff-overlay.toml"
+          echo "extend = \"$(realpath "$LIB_RUFF")\"" > "$overlay"
+          if [[ -n "$EXTEND_IGNORE" ]]; then
+            codes="$(echo "$EXTEND_IGNORE" | tr -d '[:space:]' | sed -E 's/([^,]+)/"\1"/g')"
+            printf '[lint]\nextend-per-file-ignores = { "**" = [%s] }\n' "$codes" >> "$overlay"
+          fi
+          cfg_args=(--config "$overlay")
+        fi
+        if [[ "$MODE" == "format" ]]; then
+          ruff format --check --diff --extend-exclude lib "${cfg_args[@]}" .
+        else
+          ruff check --output-format=github --extend-exclude lib "${cfg_args[@]}" .
+        fi

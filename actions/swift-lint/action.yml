@@ -1,0 +1,73 @@
+name: Swift lint
+description: Runs SwiftLint or the swift-format check on the repository's tracked Swift files.
+
+inputs:
+  mode:
+    description: lint (SwiftLint) or format (swift-format).
+    required: true
+  config:
+    description: lib = the organisation baseline, repo = the repository's own config file.
+    default: lib
+  swiftlint_version:
+    default: "0.65.1"
+  disable_rules:
+    description: Comma-separated SwiftLint rule ids to switch off (mode=lint, config=lib).
+    default: ""
+  strict:
+    description: Treat SwiftLint warnings as errors.
+    default: "false"
+  working_directory:
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - name: Run ${{ inputs.mode }}
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        MODE: ${{ inputs.mode }}
+        CONFIG: ${{ inputs.config }}
+        SWIFTLINT_VERSION: ${{ inputs.swiftlint_version }}
+        DISABLE_RULES: ${{ inputs.disable_rules }}
+        STRICT: ${{ inputs.strict }}
+        LIB_CONFIGS: ${{ github.action_path }}/../../configs
+      run: |
+        set -euo pipefail
+        configs="$(cd "$LIB_CONFIGS" && pwd)"
+
+        # Only tracked files are checked, so the checked-out lib/ never is.
+        if [[ -z "$(git ls-files '*.swift' | head -n 1)" ]]; then
+          echo "No Swift files found."
+          exit 0
+        fi
+
+        if [[ "$MODE" == "format" ]]; then
+          args=(--strict)
+          [[ "$CONFIG" == "lib" ]] && args+=(--configuration "$configs/swift-format.json")
+          git ls-files -z '*.swift' | xargs -0 xcrun swift-format lint "${args[@]}"
+          exit 0
+        fi
+
+        cd "$RUNNER_TEMP"
+        curl -fsSL -o swiftlint.zip \
+          "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip"
+        unzip -oq swiftlint.zip swiftlint
+        cd - >/dev/null
+
+        args=(--reporter github-actions-logging)
+        [[ "$STRICT" == "true" ]] && args+=(--strict)
+        if [[ "$CONFIG" == "lib" ]]; then
+          overlay="$RUNNER_TEMP/swiftlint-overlay.yml"
+          echo "parent_config: $configs/swiftlint.yml" > "$overlay"
+          if [[ -n "$DISABLE_RULES" ]]; then
+            echo "disabled_rules:" >> "$overlay"
+            IFS=',' read -ra rules <<< "$DISABLE_RULES"
+            for r in "${rules[@]}"; do
+              r="$(echo "$r" | tr -d '[:space:]')"
+              [[ -n "$r" ]] && echo "  - $r" >> "$overlay"
+            done
+          fi
+          args+=(--config "$overlay")
+        fi
+        git ls-files -z '*.swift' | xargs -0 "$RUNNER_TEMP/swiftlint" lint "${args[@]}"

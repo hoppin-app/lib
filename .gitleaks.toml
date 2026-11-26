@@ -1,0 +1,7 @@
+# gitleaks configuration: the default rules, plus one allowlisted file.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Deterministic, public test vectors: make_vectors.py derives every key from a fixed label, so they protect nothing and must stay byte-identical."
+paths = ['''^fixtures/crypto_vectors\.json$''']

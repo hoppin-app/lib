@@ -1,0 +1,15 @@
+# Dependabot for the lib repo itself.
+version: 2
+updates:
+  # Keeps the pinned commit SHAs of GitHub Actions up to date.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Wait 3 days after a release before proposing it.
+    cooldown:
+      default-days: 3 # nosemgrep: package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown
+    # One pull request for all action updates.
+    groups:
+      actions:
+        patterns: ["*"]
